@@ -1,6 +1,7 @@
 # Lecture_Assistant_Captcha
 （类似于HelloWorld）神经网络驱动的讲座信息爬虫与提醒当中的验证码识别模型
 
+不要笑，真的是 神经网络 驱动的，
 
 基本全部是GPT写的
 
