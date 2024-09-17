@@ -9,39 +9,24 @@ import torch.nn as nn
 
 # 定义 CNN 模型（与训练时的结构一致）
 class CNN(nn.Module):
+
     def __init__(self):
-        super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-
-        # 计算卷积层的输出大小
-        self.fc1_input_features = self._get_conv_output_size()
-        self.fc1 = nn.Linear(self.fc1_input_features, 128)
-        self.fc2 = nn.Linear(128, 33)  # 33 classes: 0-9 and a-z excluding i, j, l
-
-    def _get_conv_output_size(self):
-        # 创建一个假输入，通过卷积层计算输出大小
-        with torch.no_grad():
-            x = torch.zeros(1, 1, 40, 30)  # 假设输入图像大小为 40x30
-            x = self.pool(torch.relu(self.conv1(x)))
-            x = self.pool(torch.relu(self.conv2(x)))
-            return x.numel()
+        super().__init__()
+        self.layer1 = nn.Linear(40 * 30, 512)
+        self.layer2 = nn.Linear(512, 33)
 
     def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = self.pool(x)
-        x = torch.relu(self.conv2(x))
-        x = self.pool(x)
-        x = x.view(x.size(0), -1)  # Flatten the output
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = x.view(-1, 40 * 30)
+        x = self.layer1(x)
+        x = torch.relu(x)
+        x = self.layer2(x)
         return x
 
 
 # 加载模型
 model = CNN()
-model.load_state_dict(torch.load('images.pth'))
+model_file_name = "images_model.pth"
+model.load_state_dict(torch.load(model_file_name, weights_only=True))
 model.eval()  # 设置模型为评估模式
 
 # 定义图像预处理
@@ -73,13 +58,16 @@ class ImageClassifierApp:
 
         # 按钮和标签的布局
         self.label = tk.Label(self.top_frame, text="选择一个文件夹来开始", font=("Arial", 14))
-        self.label.grid(row=0, column=0, columnspan=4)
+        self.label.grid(row=0, column=0, columnspan=5)
 
         self.select_button = tk.Button(self.top_frame, text="选择文件夹", command=self.load_folder, font=("Arial", 12))
         self.select_button.grid(row=1, column=0, pady=10)
 
+        self.previous_button = tk.Button(self.top_frame, text="上一个文件夹", command=self.previous_folder, font=("Arial", 12))
+        self.previous_button.grid(row=1, column=1, pady=10)
+
         self.next_button = tk.Button(self.top_frame, text="下一个文件夹", command=self.next_folder, font=("Arial", 12))
-        self.next_button.grid(row=1, column=1, pady=10)
+        self.next_button.grid(row=1, column=2, pady=10)
 
     def load_folder(self):
         # 选择文件夹
@@ -137,6 +125,30 @@ class ImageClassifierApp:
             pred_label = tk.Label(self.bottom_frame, text=f"预测: {class_name}", font=("Arial", 12))
             pred_label.grid(row=1, column=i, padx=10)
             self.prediction_labels.append(pred_label)
+        i = 4
+        image_path = image_files[i]
+        image = Image.open(image_path)
+        image = transform(image).unsqueeze(0)  # 添加批次维度
+
+        # 预测图像
+        with torch.no_grad():
+            output = model(image)
+            _, predicted = torch.max(output, 1)
+
+        # 获取类别名称
+        predicted_label = predicted.item()
+        class_name = self.get_class_name(predicted_label)
+
+        # 显示图片和预测结果
+        img = Image.open(image_path).resize((400, 100))
+        img_tk = ImageTk.PhotoImage(img)
+        img_label = tk.Label(self.bottom_frame, image=img_tk)
+        img_label.image = img_tk  # 保存引用以防止图片被垃圾回收
+        img_label.grid(row=0, column=i, padx=10)
+        self.image_labels.append(img_label)  # 保存标签以便清除
+        pred_label = tk.Label(self.bottom_frame, text=f"未分割验证码", font=("Arial", 12))
+        pred_label.grid(row=1, column=i, padx=10)
+        self.prediction_labels.append(pred_label)
 
     def clear_canvas(self):
         # 清除所有显示的图片和预测标签
@@ -148,6 +160,11 @@ class ImageClassifierApp:
     def next_folder(self):
         if self.folders and self.folder_index < len(self.folders) - 1:
             self.folder_index += 1
+            self.show_images()
+
+    def previous_folder(self):
+        if self.folders and self.folder_index > 0:
+            self.folder_index -= 1
             self.show_images()
 
     def get_class_name(self, index):
